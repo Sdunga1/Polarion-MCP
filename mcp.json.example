@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "polarion-server": {
+      "command": "/Users/sarathkumardunga/.local/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/sarathkumardunga/Desktop/ATOMS.Tech/atoms-monorepo/apps/polarion-mcp",
+        "run",
+        "polarion_mcp_server.py"
+      ]
+    },
+    "google-sheets": {
+      "command": "/Users/sarathkumardunga/.local/bin/uvx",
+      "args": ["mcp-google-sheets@latest"],
+      "env": {
+        "CREDENTIALS_PATH": "/Users/sarathkumardunga/Desktop/ATOMS.Tech/atoms-monorepo/apps/polarion-mcp/credentials.json",
+        "TOKEN_PATH": "/Users/sarathkumardunga/Desktop/ATOMS.Tech/atoms-monorepo/apps/polarion-mcp/token.json"
+      }
+    }
+  }
+} 
