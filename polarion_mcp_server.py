@@ -61,7 +61,15 @@ async def http_get_polarion_requirements(limit: int = 5):
                 "message": "Failed to fetch requirements. Please check authentication and token."
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_message = str(e)
+        if "down" in error_message.lower() or "unavailable" in error_message.lower():
+            return {
+                "status": "error",
+                "message": error_message,
+                "note": "The Polarion service appears to be down. Please try again later when the service is restored."
+            }
+        else:
+            raise HTTPException(status_code=500, detail=error_message)
 
 @app.get("/check_polarion_status")
 async def http_check_polarion_status():
@@ -75,6 +83,38 @@ async def http_check_polarion_status():
         return {"status": "success", "polarion_status": status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/check_polarion_connectivity")
+async def http_check_polarion_connectivity():
+    """HTTP endpoint for checking if Polarion service is reachable"""
+    try:
+        response = polarion_client.session.get(POLARION_BASE_URL, timeout=5)
+        return {
+            "status": "success",
+            "message": f"Polarion service is reachable (HTTP {response.status_code})",
+            "polarion_url": POLARION_BASE_URL,
+            "response_code": response.status_code
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            "status": "error",
+            "message": "Cannot connect to Polarion service",
+            "polarion_url": POLARION_BASE_URL,
+            "note": "The Polarion instance at http://polarion.atoms.tech/polarion appears to be down or unreachable."
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "status": "error",
+            "message": "Connection to Polarion timed out",
+            "polarion_url": POLARION_BASE_URL,
+            "note": "The Polarion service is not responding within the expected time."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error checking Polarion connectivity: {str(e)}",
+            "polarion_url": POLARION_BASE_URL
+        }
 
 @app.get("/get_polarion_user/{user_id}")
 async def http_get_polarion_user(user_id: str):
@@ -197,19 +237,29 @@ class PolarionClient:
                 'Content-Type': 'application/json'
             }
             
-            response = self.session.get(api_url, params=params, headers=headers)
+            response = self.session.get(api_url, params=params, headers=headers, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
                 requirements = (data.get('data') or [])[:limit]
                 logger.info(f"Fetched {len(requirements)} requirements")
                 return requirements
+            elif response.status_code == 503 or response.status_code == 502:
+                raise Exception(f"Polarion service is currently unavailable (HTTP {response.status_code}). Please try again later.")
+            elif response.status_code == 404:
+                raise Exception(f"Polarion endpoint not found (HTTP 404). The service might be down or the URL has changed.")
             else:
-                raise Exception(f"API error: {response.status_code}")
+                raise Exception(f"API error: {response.status_code} - {response.text}")
                 
+        except requests.exceptions.ConnectionError:
+            logger.error("Failed to connect to Polarion - service might be down")
+            raise Exception("Cannot connect to Polarion service. The instance at http://polarion.atoms.tech/polarion might be down or unreachable.")
+        except requests.exceptions.Timeout:
+            logger.error("Request to Polarion timed out")
+            raise Exception("Request to Polarion timed out. The service might be overloaded or down.")
         except Exception as e:
             logger.error(f"Failed to fetch requirements: {e}")
-            return []
+            raise e
 
     def get_user(self, user_id: str) -> Optional[Dict]:
         """Fetch user information from Polarion REST API"""

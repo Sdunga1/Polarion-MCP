@@ -71,6 +71,7 @@ Once deployed, your server will be available at `https://your-app-name.onrender.
 - `POST /set_polarion_token` - Set Polarion token
 - `GET /get_polarion_requirements?limit=5` - Get requirements
 - `GET /check_polarion_status` - Check authentication status
+- `GET /check_polarion_connectivity` - Check if Polarion service is reachable
 - `GET /get_polarion_user/{user_id}` - Get user information
 
 ## Usage
