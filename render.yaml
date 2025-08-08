@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: polarion-mcp-server
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python polarion_mcp_server.py
+    envVars:
+      - key: MCP_TRANSPORT
+        value: http
+      - key: PORT
+        value: 8000

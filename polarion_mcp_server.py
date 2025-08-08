@@ -6,9 +6,94 @@ from typing import Dict, List, Optional
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
 import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+import uvicorn
 
 # Create an MCP server
 mcp = FastMCP("Polarion-MCP-Server")
+
+# Create FastAPI app for HTTP transport
+app = FastAPI(title="Polarion MCP Server", version="1.0.0")
+
+# HTTP endpoints for the MCP server
+@app.get("/")
+async def root():
+    return {"message": "Polarion MCP Server is running", "status": "healthy"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "polarion-mcp"}
+
+@app.post("/open_polarion_login")
+async def http_open_polarion_login():
+    """HTTP endpoint for opening Polarion login page"""
+    try:
+        result = polarion_client.open_login_page()
+        return JSONResponse(content=json.loads(result))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/set_polarion_token")
+async def http_set_polarion_token(token: str):
+    """HTTP endpoint for setting Polarion token"""
+    try:
+        result = polarion_client.set_token_manually(token)
+        return JSONResponse(content=json.loads(result))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get_polarion_requirements")
+async def http_get_polarion_requirements(limit: int = 5):
+    """HTTP endpoint for getting Polarion requirements"""
+    try:
+        requirements = polarion_client.get_requirements(limit)
+        if requirements:
+            return {
+                "status": "success",
+                "message": f"Successfully fetched {len(requirements)} requirements",
+                "requirements": requirements,
+                "count": len(requirements)
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to fetch requirements. Please check authentication and token."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/check_polarion_status")
+async def http_check_polarion_status():
+    """HTTP endpoint for checking Polarion status"""
+    try:
+        status = {
+            "authenticated": polarion_client.is_authenticated,
+            "has_token": bool(polarion_client.token or polarion_client.load_token()),
+            "token_saved": os.path.exists(TOKEN_FILE)
+        }
+        return {"status": "success", "polarion_status": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get_polarion_user/{user_id}")
+async def http_get_polarion_user(user_id: str):
+    """HTTP endpoint for getting Polarion user information"""
+    try:
+        user_data = polarion_client.get_user(user_id)
+        if user_data:
+            return {
+                "status": "success",
+                "message": f"Successfully fetched user information for: {user_id}",
+                "user": user_data
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to fetch user information for: {user_id}. User may not exist or you may not have permission to access this user."
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Configuration
 POLARION_BASE_URL = "http://polarion.atoms.tech/polarion"
@@ -235,5 +320,16 @@ def get_polarion_user(user_id: str) -> str:
 
 if __name__ == "__main__":
     print("Starting Polarion MCP Server...")
-    # Initialize the server and run it
-    mcp.run(transport="stdio") 
+    
+    # Check if we should run in HTTP mode (for hosting) or stdio mode (for local development)
+    transport_mode = os.getenv("MCP_TRANSPORT", "stdio")
+    
+    if transport_mode == "http":
+        # HTTP mode for hosting on Render
+        port = int(os.getenv("PORT", 8000))
+        print(f"Starting HTTP server on port {port}")
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    else:
+        # stdio mode for local development
+        print("Starting stdio server")
+        mcp.run(transport="stdio") 

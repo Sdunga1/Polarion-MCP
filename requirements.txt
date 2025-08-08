@@ -1,0 +1,7 @@
+loguru
+mcp
+requests
+selenium
+webdriver-manager
+fastapi
+uvicorn

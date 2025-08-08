@@ -1,98 +1,87 @@
 # Polarion MCP Server
 
-This MCP server provides tools to authenticate with Polarion, generate access tokens, and fetch requirements from your Polarion instance.
+A Model Context Protocol (MCP) server for interacting with Siemens Polarion requirements management system.
 
 ## Features
 
-- **Authentication**: Form-based login to Polarion
-- **Token Generation**: Automated token generation using browser automation
-- **Requirements Fetching**: Fetch requirements via Polarion REST API
-- **Status Checking**: Check authentication and token status
+- Authentication with Polarion
+- Fetch requirements from Polarion REST API
+- Get user information
+- Status checking
+- HTTP API endpoints for web hosting
 
-## Setup
+## Local Development
 
-1. **Install dependencies:**
+### Prerequisites
 
-   ```bash
-   cd atoms-monorepo/apps/polarion-mcp
-   uv venv
-   source .venv/bin/activate
-   uv pip install -e .
-   ```
+- Python 3.10+
+- Access to Polarion instance
 
-2. **Install Chrome WebDriver:**
+### Installation
 
-   ```bash
-   # The webdriver-manager will handle this automatically
-   # or install manually: brew install chromedriver
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-3. **Configure MCP in Cursor:**
+### Running Locally
 
-   Add to your `mcp.json` file:
+```bash
+python polarion_mcp_server.py
+```
 
-   ```json
-   {
-     "mcpServers": {
-       "polarion-server": {
-         "command": "/Users/sarathkumardunga/.local/bin/uv",
-         "args": [
-           "--directory",
-           "/Users/sarathkumardunga/Desktop/ATOMS.Tech/atoms-monorepo/apps/polarion-mcp",
-           "run",
-           "polarion_mcp_server.py"
-         ]
-       }
-     }
-   }
-   ```
+This runs the server in stdio mode for local MCP development.
+
+## Deployment to Render
+
+### Option 1: Using render.yaml (Recommended)
+
+1. Push your code to a GitHub repository
+2. Go to [Render Dashboard](https://dashboard.render.com/)
+3. Click "New +" → "Blueprint"
+4. Connect your GitHub repository
+5. Render will automatically detect the `render.yaml` file and deploy
+
+### Option 2: Manual Deployment
+
+1. Push your code to a GitHub repository
+2. Go to [Render Dashboard](https://dashboard.render.com/)
+3. Click "New +" → "Web Service"
+4. Connect your GitHub repository
+5. Configure:
+   - **Name**: `polarion-mcp-server`
+   - **Environment**: `Python`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `python polarion_mcp_server.py`
+   - **Environment Variables**:
+     - `MCP_TRANSPORT`: `http`
+     - `PORT`: `8000`
+
+### Environment Variables
+
+- `MCP_TRANSPORT`: Set to `http` for web hosting, `stdio` for local development
+- `PORT`: Port number (default: 8000, Render will set this automatically)
+
+## API Endpoints
+
+Once deployed, your server will be available at `https://your-app-name.onrender.com` with these endpoints:
+
+- `GET /` - Health check
+- `GET /health` - Service status
+- `POST /open_polarion_login` - Open Polarion login page
+- `POST /set_polarion_token` - Set Polarion token
+- `GET /get_polarion_requirements?limit=5` - Get requirements
+- `GET /check_polarion_status` - Check authentication status
+- `GET /get_polarion_user/{user_id}` - Get user information
 
 ## Usage
 
-### 1. Authenticate with Polarion
+1. Deploy to Render
+2. Get your URL (e.g., `https://polarion-mcp-server.onrender.com`)
+3. Use the HTTP endpoints to interact with Polarion
 
-```
-"Authenticate me to Polarion with username: admin and password: [your_password]"
-```
+## Local vs Hosted
 
-### 2. Generate Access Token
+- **Local**: Uses stdio transport for MCP development
+- **Hosted**: Uses HTTP transport for web API access
 
-```
-"Generate a Polarion access token named 'cursor-integration'"
-```
-
-### 3. Fetch Requirements
-
-```
-"Get 5 requirements from my Polarion instance"
-```
-
-### 4. Check Status
-
-```
-"Check my Polarion connection status"
-```
-
-### 5. Complete Flow (with Google Sheets)
-
-```
-"Get 5 requirements from my Polarion instance and write them to the Google Sheets called 'polarion-requirements'"
-```
-
-## Security
-
-- Credentials are stored locally in `polarion_credentials.json`
-- Tokens are stored locally in `polarion_token.json`
-- Files are created in the same directory as the MCP server
-
-## Troubleshooting
-
-1. **Chrome WebDriver Issues**: Make sure Chrome is installed and up to date
-2. **Authentication Failures**: Verify your Polarion credentials
-3. **Token Generation Issues**: Check if the token page is accessible
-4. **API Errors**: Ensure you have proper permissions in Polarion
-
-## Files Created
-
-- `polarion_credentials.json`: Stored credentials
-- `polarion_token.json`: Generated access tokens
+The server automatically detects the environment and switches transport modes accordingly.
