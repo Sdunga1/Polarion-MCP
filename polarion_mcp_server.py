@@ -14,7 +14,7 @@ mcp = FastMCP("Polarion-MCP-Server")
 POLARION_BASE_URL = "http://dev.polarion.atoms.tech/polarion"
 LOGIN_URL = POLARION_BASE_URL  # Use the main URL, not a specific login path
 TOKEN_PAGE_URL = f"{POLARION_BASE_URL}/#/user_tokens?id=admin"
-TOKEN_FILE = "polarion_token.json"
+TOKEN_FILE = os.path.join(os.getenv("TOKEN_DIR", "."), "polarion_token.json")
 
 # Reasonable network timeout for all Polarion API calls (seconds)
 REQUEST_TIMEOUT_SECONDS = 8
@@ -24,7 +24,7 @@ WORK_ITEM_MIN_FIELDS = "id,title,type,description"
 class PolarionClient:
     def __init__(self):
         self.session = requests.Session()
-        self.token = None
+        self.token = os.getenv("POLARION_TOKEN")  # Check for env var first
     
     def _ensure_token(self):
         if not self.token:
