@@ -6,146 +6,54 @@ from typing import Dict, List, Optional
 from loguru import logger
 from mcp.server.fastmcp import FastMCP
 import requests
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-import uvicorn
 
 # Create an MCP server
 mcp = FastMCP("Polarion-MCP-Server")
 
-# Create FastAPI app for HTTP transport
-app = FastAPI(title="Polarion MCP Server", version="1.0.0")
-
-# HTTP endpoints for the MCP server
-@app.get("/")
-async def root():
-    return {"message": "Polarion MCP Server is running", "status": "healthy"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "polarion-mcp"}
-
-@app.post("/open_polarion_login")
-async def http_open_polarion_login():
-    """HTTP endpoint for opening Polarion login page"""
-    try:
-        result = polarion_client.open_login_page()
-        return JSONResponse(content=json.loads(result))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/set_polarion_token")
-async def http_set_polarion_token(token: str):
-    """HTTP endpoint for setting Polarion token"""
-    try:
-        result = polarion_client.set_token_manually(token)
-        return JSONResponse(content=json.loads(result))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/get_polarion_requirements")
-async def http_get_polarion_requirements(limit: int = 5):
-    """HTTP endpoint for getting Polarion requirements"""
-    try:
-        requirements = polarion_client.get_requirements(limit)
-        if requirements:
-            return {
-                "status": "success",
-                "message": f"Successfully fetched {len(requirements)} requirements",
-                "requirements": requirements,
-                "count": len(requirements)
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Failed to fetch requirements. Please check authentication and token."
-            }
-    except Exception as e:
-        error_message = str(e)
-        if "down" in error_message.lower() or "unavailable" in error_message.lower():
-            return {
-                "status": "error",
-                "message": error_message,
-                "note": "The Polarion service appears to be down. Please try again later when the service is restored."
-            }
-        else:
-            raise HTTPException(status_code=500, detail=error_message)
-
-@app.get("/check_polarion_status")
-async def http_check_polarion_status():
-    """HTTP endpoint for checking Polarion status"""
-    try:
-        status = {
-            "authenticated": polarion_client.is_authenticated,
-            "has_token": bool(polarion_client.token or polarion_client.load_token()),
-            "token_saved": os.path.exists(TOKEN_FILE)
-        }
-        return {"status": "success", "polarion_status": status}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/check_polarion_connectivity")
-async def http_check_polarion_connectivity():
-    """HTTP endpoint for checking if Polarion service is reachable"""
-    try:
-        response = polarion_client.session.get(POLARION_BASE_URL, timeout=5)
-        return {
-            "status": "success",
-            "message": f"Polarion service is reachable (HTTP {response.status_code})",
-            "polarion_url": POLARION_BASE_URL,
-            "response_code": response.status_code
-        }
-    except requests.exceptions.ConnectionError:
-        return {
-            "status": "error",
-            "message": "Cannot connect to Polarion service",
-            "polarion_url": POLARION_BASE_URL,
-            "note": "The Polarion instance at http://polarion.atoms.tech/polarion appears to be down or unreachable."
-        }
-    except requests.exceptions.Timeout:
-        return {
-            "status": "error",
-            "message": "Connection to Polarion timed out",
-            "polarion_url": POLARION_BASE_URL,
-            "note": "The Polarion service is not responding within the expected time."
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Error checking Polarion connectivity: {str(e)}",
-            "polarion_url": POLARION_BASE_URL
-        }
-
-@app.get("/get_polarion_user/{user_id}")
-async def http_get_polarion_user(user_id: str):
-    """HTTP endpoint for getting Polarion user information"""
-    try:
-        user_data = polarion_client.get_user(user_id)
-        if user_data:
-            return {
-                "status": "success",
-                "message": f"Successfully fetched user information for: {user_id}",
-                "user": user_data
-            }
-        else:
-            return {
-                "status": "error",
-                "message": f"Failed to fetch user information for: {user_id}. User may not exist or you may not have permission to access this user."
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 # Configuration
-POLARION_BASE_URL = "http://polarion.atoms.tech/polarion"
+POLARION_BASE_URL = "http://dev.polarion.atoms.tech/polarion"
 LOGIN_URL = POLARION_BASE_URL  # Use the main URL, not a specific login path
 TOKEN_PAGE_URL = f"{POLARION_BASE_URL}/#/user_tokens?id=admin"
 TOKEN_FILE = "polarion_token.json"
+
+# Reasonable network timeout for all Polarion API calls (seconds)
+REQUEST_TIMEOUT_SECONDS = 8
+# Small, consistent field set for work items to keep payloads light
+WORK_ITEM_MIN_FIELDS = "id,title,type,description"
 
 class PolarionClient:
     def __init__(self):
         self.session = requests.Session()
         self.token = None
-        self.is_authenticated = False
+    
+    def _ensure_token(self):
+        if not self.token:
+            self.token = self.load_token()
+        if not self.token:
+            raise Exception("No token available. Please set or generate a token first.")
+    
+    def _handle_api_response(self, response, operation_name: str):
+        """Handle API response and provide meaningful error messages for common issues."""
+        if response.status_code == 200:
+            return True
+        
+        if response.status_code == 401:
+            raise Exception(f"Authentication failed: Token may be expired or invalid. Please regenerate your token.")
+        elif response.status_code == 403:
+            raise Exception(f"Access denied: You don't have permission to {operation_name}.")
+        elif response.status_code == 404:
+            raise Exception(f"Resource not found: {operation_name} failed.")
+        elif response.status_code == 500:
+            raise Exception(f"Polarion server error: {operation_name} failed. Please try again later.")
+        else:
+            raise Exception(f"API error {response.status_code}: {response.text}")
+    
+    def _headers(self) -> Dict[str, str]:
+        return {
+            'Authorization': f'Bearer {self.token}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
     
     def open_login_page(self) -> str:
         """Open Polarion login page in user's browser for manual authentication"""
@@ -180,10 +88,9 @@ class PolarionClient:
         try:
             self.token = token
             self.save_token(token)
-            self.is_authenticated = True
             return json.dumps({
                 "status": "success",
-                "message": "Token set successfully. Please test it by fetching requirements.",
+                "message": "Token set successfully. Please test it by fetching work items or projects.",
                 "token_preview": f"{token[:10]}...{token[-10:]}"
             }, indent=2)
         except Exception as e:
@@ -215,86 +122,101 @@ class PolarionClient:
             logger.error(f"Failed to load token: {e}")
         return None
     
-    def get_requirements(self, limit: int = 5) -> List[Dict]:
-        """Fetch requirements from Polarion REST API"""
+    def get_projects(self, limit: int = 10) -> List[Dict]:
+        """Fetch projects from Polarion REST API (lightweight fields)."""
         try:
-            # Load token if not already loaded
-            if not self.token:
-                self.token = self.load_token()
-            
-            if not self.token:
-                raise Exception("No token available. Please generate a token first.")
-            
-            # API endpoint
-            api_url = f"{POLARION_BASE_URL}/rest/v1/projects/drivepilot/workitems"
+            self._ensure_token()
+            api_url = f"{POLARION_BASE_URL}/rest/v1/projects"
             params = {
-                'query': 'type:systemrequirement OR type:softwarerequirement',
-                'fields[workitems]': 'id,title,type,description'
+                'fields[projects]': '@basic',
+                'page[size]': limit
             }
-            
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json'
-            }
-            
-            response = self.session.get(api_url, params=params, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                requirements = (data.get('data') or [])[:limit]
-                logger.info(f"Fetched {len(requirements)} requirements")
-                return requirements
-            elif response.status_code == 503 or response.status_code == 502:
-                raise Exception(f"Polarion service is currently unavailable (HTTP {response.status_code}). Please try again later.")
-            elif response.status_code == 404:
-                raise Exception(f"Polarion endpoint not found (HTTP 404). The service might be down or the URL has changed.")
-            else:
-                raise Exception(f"API error: {response.status_code} - {response.text}")
-                
-        except requests.exceptions.ConnectionError:
-            logger.error("Failed to connect to Polarion - service might be down")
-            raise Exception("Cannot connect to Polarion service. The instance at http://polarion.atoms.tech/polarion might be down or unreachable.")
-        except requests.exceptions.Timeout:
-            logger.error("Request to Polarion timed out")
-            raise Exception("Request to Polarion timed out. The service might be overloaded or down.")
+            response = self.session.get(api_url, params=params, headers=self._headers(), timeout=REQUEST_TIMEOUT_SECONDS)
+            self._handle_api_response(response, "fetch projects")
+            data = response.json()
+            projects = (data.get('data') or [])[:limit]
+            logger.info(f"Fetched {len(projects)} projects")
+            return projects
         except Exception as e:
-            logger.error(f"Failed to fetch requirements: {e}")
-            raise e
+            logger.error(f"Failed to fetch projects: {e}")
+            return []
 
-    def get_user(self, user_id: str) -> Optional[Dict]:
-        """Fetch user information from Polarion REST API"""
+    def get_project(self, project_id: str, fields: str = "@basic") -> Optional[Dict]:
+        """Fetch specific project details from Polarion REST API."""
         try:
-            # Load token if not already loaded
-            if not self.token:
-                self.token = self.load_token()
-            
-            if not self.token:
-                raise Exception("No token available. Please generate a token first.")
-            
-            # API endpoint for getting user information
-            api_url = f"{POLARION_BASE_URL}/rest/v1/users/{user_id}"
-            
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-            
-            response = self.session.get(api_url, headers=headers)
-            
-            if response.status_code == 200:
-                user_data = response.json()
-                logger.info(f"Fetched user information for: {user_id}")
-                return user_data
-            elif response.status_code == 404:
-                logger.warning(f"User not found: {user_id}")
+            self._ensure_token()
+            api_url = f"{POLARION_BASE_URL}/rest/v1/projects/{project_id}"
+            params = {'fields[projects]': fields}
+            response = self.session.get(api_url, params=params, headers=self._headers(), timeout=REQUEST_TIMEOUT_SECONDS)
+            if response.status_code == 404:
+                logger.warning(f"Project not found: {project_id}")
                 return None
-            else:
-                raise Exception(f"API error: {response.status_code}")
-                
+            self._handle_api_response(response, f"fetch project {project_id}")
+            project_data = response.json()
+            logger.info(f"Fetched project: {project_id}")
+            return project_data
         except Exception as e:
-            logger.error(f"Failed to fetch user information: {e}")
+            logger.error(f"Failed to fetch project {project_id}: {e}")
             return None
+
+    def get_work_items(self, project_id: str, limit: int = 10, query: str = "") -> List[Dict]:
+        """Fetch work items (minimal fields). Parameters: project_id, limit, optional query."""
+        try:
+            self._ensure_token()
+            api_url = f"{POLARION_BASE_URL}/rest/v1/projects/{project_id}/workitems"
+            params = {
+                'fields[workitems]': WORK_ITEM_MIN_FIELDS,
+                'page[size]': limit
+            }
+            if query:
+                params['query'] = query
+            response = self.session.get(api_url, params=params, headers=self._headers(), timeout=REQUEST_TIMEOUT_SECONDS)
+            self._handle_api_response(response, f"fetch work items from project {project_id}")
+            data = response.json()
+            work_items = (data.get('data') or [])[:limit]
+            logger.info(f"Fetched {len(work_items)} work items from {project_id}")
+            return work_items
+        except Exception as e:
+            logger.error(f"Failed to fetch work items from {project_id}: {e}")
+            return []
+    
+    def get_work_item(self, project_id: str, work_item_id: str, fields: str = "@basic") -> Optional[Dict]:
+        """Fetch a specific work item by ID from Polarion REST API."""
+        try:
+            self._ensure_token()
+            api_url = f"{POLARION_BASE_URL}/rest/v1/projects/{project_id}/workitems/{work_item_id}"
+            params = {'fields[workitems]': fields}
+            response = self.session.get(api_url, params=params, headers=self._headers(), timeout=REQUEST_TIMEOUT_SECONDS)
+            if response.status_code == 404:
+                logger.warning(f"Work item not found: {work_item_id} in project: {project_id}")
+                return None
+            self._handle_api_response(response, f"fetch work item {work_item_id} from project {project_id}")
+            work_item_data = response.json()
+            logger.info(f"Fetched work item: {work_item_id} from project: {project_id}")
+            return work_item_data
+        except Exception as e:
+            logger.error(f"Failed to fetch work item {work_item_id} from project {project_id}: {e}")
+            return None
+
+    def get_document(self, project_id: str, space_id: str, document_name: str, fields: str = "@basic") -> Optional[Dict]:
+        """Fetch a specific document from Polarion REST API."""
+        try:
+            self._ensure_token()
+            api_url = f"{POLARION_BASE_URL}/rest/v1/projects/{project_id}/spaces/{space_id}/documents/{document_name}"
+            params = {'fields[documents]': fields}
+            response = self.session.get(api_url, params=params, headers=self._headers(), timeout=REQUEST_TIMEOUT_SECONDS)
+            if response.status_code == 404:
+                logger.warning(f"Document not found: {document_name} in space: {space_id} of project: {project_id}")
+                return None
+            self._handle_api_response(response, f"fetch document {document_name} from space {space_id} in project {project_id}")
+            document_data = response.json()
+            logger.info(f"Fetched document: {document_name} from space: {space_id} in project: {project_id}")
+            return document_data
+        except Exception as e:
+            logger.error(f"Failed to fetch document {document_name} from space {space_id} in project {project_id}: {e}")
+            return None
+
+
 
 # Global Polarion client instance
 polarion_client = PolarionClient()
@@ -307,66 +229,105 @@ def open_polarion_login() -> str:
 
 @mcp.tool()
 def set_polarion_token(token: str) -> str:
-    """Set Polarion access token manually (after generating it in browser)"""
+    """Set Polarion access token manually (after generating it in browser) or user providing it"""
     logger.info("Setting Polarion token manually")
     return polarion_client.set_token_manually(token)
 
-
-
 @mcp.tool()
-def get_polarion_requirements(limit: int = 5) -> str:
-    """Fetch requirements from Polarion instance"""
-    logger.info(f"Fetching {limit} requirements from Polarion")
-    
-    requirements = polarion_client.get_requirements(limit)
-    
-    if requirements:
+def get_polarion_projects(limit: int = 10) -> str:
+    """List projects (fast, minimal fields). Parameters: limit."""
+    logger.info(f"Fetching {limit} projects from Polarion")
+    projects = polarion_client.get_projects(limit)
+    if projects:
         return json.dumps({
             "status": "success",
-            "message": f"Successfully fetched {len(requirements)} requirements",
-            "requirements": requirements,
-            "count": len(requirements)
+            "message": f"Successfully fetched {len(projects)} projects",
+            "projects": projects,
+            "count": len(projects)
         }, indent=2)
-    else:
+    return json.dumps({
+        "status": "error",
+        "message": "Failed to fetch projects. Please check authentication and token."
+    }, indent=2)
+
+@mcp.tool()
+def get_polarion_project(project_id: str, fields: str = "@basic") -> str:
+    """Get a specific project by ID. Parameters: project_id, optional fields (@basic|@all)."""
+    logger.info(f"Fetching project {project_id} from Polarion")
+    project = polarion_client.get_project(project_id, fields)
+    if project:
         return json.dumps({
-            "status": "error",
-            "message": "Failed to fetch requirements. Please check authentication and token."
+            "status": "success",
+            "message": f"Successfully fetched project: {project_id}",
+            "project": project
         }, indent=2)
+    return json.dumps({
+        "status": "error",
+        "message": f"Failed to fetch project {project_id}. Project may not exist or access is denied."
+    }, indent=2)
+
+@mcp.tool()
+def get_polarion_work_items(project_id: str, limit: int = 10, query: str = "") -> str:
+    """List work items with minimal fields. Parameters: project_id, limit, optional query."""
+    logger.info(f"Fetching {limit} work items from project {project_id}")
+    work_items = polarion_client.get_work_items(project_id, limit, query)
+    if work_items:
+        return json.dumps({
+            "status": "success",
+            "message": f"Successfully fetched {len(work_items)} work items from project {project_id}",
+            "work_items": work_items,
+            "count": len(work_items),
+            "project_id": project_id
+        }, indent=2)
+    return json.dumps({
+        "status": "error",
+        "message": f"Failed to fetch work items from project {project_id}. Check token, project ID, or permissions."
+    }, indent=2)
+
+@mcp.tool()
+def get_polarion_work_item(project_id: str, work_item_id: str, fields: str = "@basic") -> str:
+    """Get a specific work item by ID. Parameters: project_id, work_item_id, optional fields (@basic|@all)."""
+    logger.info(f"Fetching work item {work_item_id} from project {project_id}")
+    work_item = polarion_client.get_work_item(project_id, work_item_id, fields)
+    if work_item:
+        return json.dumps({
+            "status": "success",
+            "message": f"Successfully fetched work item: {work_item_id} from project {project_id}",
+            "work_item": work_item
+        }, indent=2)
+    return json.dumps({
+        "status": "error",
+        "message": f"Failed to fetch work item {work_item_id} from project {project_id}. Work item may not exist or access is denied."
+    }, indent=2)
+
+@mcp.tool()
+def get_polarion_document(project_id: str, space_id: str, document_name: str, fields: str = "@basic") -> str:
+    """Get a specific document by name. Parameters: project_id, space_id, document_name, optional fields (@basic|@all)."""
+    logger.info(f"Fetching document {document_name} from space {space_id} in project {project_id}")
+    document = polarion_client.get_document(project_id, space_id, document_name, fields)
+    if document:
+        return json.dumps({
+            "status": "success",
+            "message": f"Successfully fetched document: {document_name} from space {space_id} in project {project_id}",
+            "document": document
+        }, indent=2)
+    return json.dumps({
+        "status": "error",
+        "message": f"Failed to fetch document {document_name} from space {space_id} in project {project_id}. Document may not exist or access is denied."
+    }, indent=2)
 
 @mcp.tool()
 def check_polarion_status() -> str:
     """Check the current status of Polarion connection and authentication"""
     logger.info("Checking Polarion status")
-    
     status = {
-        "authenticated": polarion_client.is_authenticated,
         "has_token": bool(polarion_client.token or polarion_client.load_token()),
         "token_saved": os.path.exists(TOKEN_FILE)
     }
-    
     return json.dumps({
         "status": "success",
         "polarion_status": status
     }, indent=2)
-
-@mcp.tool()
-def get_polarion_user(user_id: str) -> str:
-    """Get user information from Polarion REST API"""
-    logger.info(f"Fetching user information for: {user_id}")
-    
-    user_data = polarion_client.get_user(user_id)
-    
-    if user_data:
-        return json.dumps({
-            "status": "success",
-            "message": f"Successfully fetched user information for: {user_id}",
-            "user": user_data
-        }, indent=2)
-    else:
-        return json.dumps({
-            "status": "error",
-            "message": f"Failed to fetch user information for: {user_id}. User may not exist or you may not have permission to access this user."
-        }, indent=2)
 
 if __name__ == "__main__":
     print("Starting Polarion MCP Server...")
@@ -375,11 +336,10 @@ if __name__ == "__main__":
     transport_mode = os.getenv("MCP_TRANSPORT", "stdio")
     
     if transport_mode == "http":
-        # HTTP mode for hosting on Render
-        port = int(os.getenv("PORT", 8000))
-        print(f"Starting HTTP server on port {port}")
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        # HTTP mode for hosting on Render - would need FastAPI setup
+        print("HTTP mode not implemented in this version")
+        exit(1)
     else:
         # stdio mode for local development
         print("Starting stdio server")
-        mcp.run(transport="stdio") 
+        mcp.run(transport="stdio")

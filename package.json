@@ -1,0 +1,26 @@
+{
+  "name": "mcp-polarion-server",
+  "version": "1.0.0",
+  "description": "MCP Server for Siemens Polarion requirements management",
+  "main": "polarion_mcp_server.py",
+  "bin": {
+    "mcp-polarion-server": "./polarion_mcp_server.py"
+  },
+  "scripts": {
+    "start": "python polarion_mcp_server.py"
+  },
+  "keywords": [
+    "mcp",
+    "polarion",
+    "requirements",
+    "model-context-protocol"
+  ],
+  "author": "ATOMS.Tech",
+  "license": "MIT",
+  "dependencies": {
+    "python": ">=3.10"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
