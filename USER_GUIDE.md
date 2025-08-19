@@ -5,14 +5,18 @@
 ### Step 1: Add to your mcp.json
 
 **Option A: With Persistent Token Storage (Recommended)**
+
 ```json
 {
   "mcpServers": {
     "polarion": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
-        "-v", "polarion-tokens:/app/tokens",
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "polarion-tokens:/app/tokens",
         "ghcr.io/sdunga1/polarion-mcp:latest"
       ]
     }
@@ -21,6 +25,7 @@
 ```
 
 **Option B: With Environment Variable Token**
+
 ```json
 {
   "mcpServers": {
@@ -36,6 +41,7 @@
 ```
 
 **Option C: Basic (Token re-entry required each session)**
+
 ```json
 {
   "mcpServers": {
