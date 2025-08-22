@@ -15,6 +15,7 @@
         "run",
         "-i",
         "--rm",
+        "--pull=always",
         "-v",
         "polarion-tokens:/app/tokens",
         "ghcr.io/sdunga1/polarion-mcp:latest"
