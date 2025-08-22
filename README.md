@@ -24,7 +24,7 @@ Add this to your `mcp.json`:
       "command": "docker",
       "args": [
         "run",
-        "-i", 
+        "-i",
         "--rm",
         "--pull=always",
         "-v",
