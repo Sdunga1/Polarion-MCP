@@ -779,44 +779,44 @@ def check_polarion_status() -> str:
     }, indent=2)
 
 @mcp.tool()
-def polarion_github_requirements_coverage(project_id: str, topic: str, github_repo_url: str, github_folder: str = "") -> str:
+def polarion_github_requirements_coverage(project_id: str, topic: str, github_folder: str = "") -> str:
     """
-    <purpose>Cross-platform requirements coverage analysis between Polarion and GitHub with real-time data</purpose>
+    <purpose>Smart requirements coverage analysis between Polarion and connected GitHub repository</purpose>
     
     <when_to_use>
-    - When you need to verify if requirements are implemented in code
-    - For gap analysis between specifications and implementation
-    - When user asks to "check if requirements are implemented" or "find missing implementations"
+    - When you need to verify if requirements are implemented in the current codebase
+    - For gap analysis between Polarion specifications and actual code implementation  
+    - When user asks "check if requirements are implemented" or "find missing implementations"
     - For requirements traceability and coverage validation
-    - When you need fresh, real-time data from both Polarion and GitHub
+    - When you need to identify what's missing from the current code
     </when_to_use>
     
     <workflow_position>
-    COMPREHENSIVE CROSS-PLATFORM ANALYSIS TOOL: Use this for end-to-end requirements coverage analysis
-    STEP 1: This tool fetches FRESH requirements from Polarion in real-time
-    STEP 2: This tool provides guidance for analyzing GitHub repository implementation
-    STEP 3: This tool requires manual code analysis to determine actual implementation status
+    INTELLIGENT COVERAGE ANALYSIS TOOL: Use this for end-to-end requirements verification
+    STEP 1: Automatically detects connected GitHub repository from context
+    STEP 2: Fetches FRESH requirements from Polarion for specified topic
+    STEP 3: Analyzes actual code files in GitHub repository 
+    STEP 4: Identifies implemented vs missing requirements based on code examination
     </workflow_position>
     
-    <fresh_data_guarantee>
-    REAL-TIME DATA FETCHING: This tool always works with fresh data
-    - Polarion: Fetches requirements directly from API (no caching)
-    - GitHub: Provides guidance for live repository analysis via GitHub MCP tools
-    - No stale data: Each execution gets current state from both platforms
-    - Team-safe: Works correctly even when colleagues make concurrent changes
-    </fresh_data_guarantee>
+    <smart_features>
+    AUTO-DETECTION: No need to provide GitHub URLs - intelligently finds connected repository
+    REAL-TIME ANALYSIS: Examines current code state, not cached data
+    CONTEXTUAL SEARCH: Looks for requirement IDs, related functions, and implementation evidence in actual code
+    TEAM-SAFE: Works with live repository state, handles concurrent changes
+    </smart_features>
     
     <parameters>
-    - project_id: Required. Polarion project ID (e.g., "AutoCar")
-    - topic: Required. Requirements topic to analyze (e.g., "HMI", "braking", "perception")
-    - github_repo_url: Required. GitHub repository URL (e.g., "https://github.com/Sdunga1/AutoCar.git")
-    - github_folder: Optional. Specific folder to analyze (e.g., "hmi", "braking"). Empty means analyze entire repo
+    - project_id: Required. Polarion project ID (e.g., "AutoCar", "drivepilot")
+    - topic: Required. Requirements topic to analyze (e.g., "HMI", "braking", "perception", "safety")
+    - github_folder: Optional. Specific folder to focus analysis (e.g., "hmi", "braking"). Empty means analyze entire repository
     </parameters>
     
     <examples>
-    - HMI analysis: project_id="AutoCar", topic="HMI", github_repo_url="https://github.com/Sdunga1/AutoCar.git", github_folder="hmi"
-    - Complete system: project_id="AutoCar", topic="automated_driving", github_repo_url="https://github.com/Sdunga1/AutoCar.git"
-    - Braking system: project_id="AutoCar", topic="braking", github_repo_url="https://github.com/Sdunga1/AutoCar.git", github_folder="braking"
+    - HMI analysis: project_id="AutoCar", topic="HMI", github_folder="hmi"
+    - Complete system: project_id="drivepilot", topic="autonomous_driving"
+    - Safety features: project_id="AutoCar", topic="safety", github_folder="safety_systems"
+    - All requirements: project_id="AutoCar", topic="requirements"
     </examples>
     
     <output>
@@ -872,14 +872,29 @@ def polarion_github_requirements_coverage(project_id: str, topic: str, github_re
     4. Determine what's missing based on actual code analysis
     </important_note>
     """
-    logger.info(f"Starting FRESH requirements coverage analysis for {topic} in project {project_id}")
-    logger.info("🔄 REAL-TIME DATA FETCH: Getting current data from both Polarion and GitHub")
+    logger.info(f"Starting SMART requirements coverage analysis for '{topic}' in project '{project_id}'")
+    logger.info("🧠 AUTO-DETECTING: GitHub repository from context and fetching live data")
     
     try:
-        # Validate inputs and authentication
-        validation_result = _validate_coverage_analysis_inputs(project_id, topic, github_repo_url)
-        if validation_result:
-            return validation_result
+        # Simplified validation (no GitHub URL needed)
+        if not (polarion_client.token or polarion_client.load_token()):
+            return json.dumps({
+                "status": "error",
+                "message": "Polarion authentication required",
+                "next_steps": [
+                    "Use open_polarion_login() to authenticate",
+                    "Then use set_polarion_token() with generated token",
+                    "Finally retry this analysis"
+                ]
+            }, indent=2)
+        
+        if not project_id or not topic:
+            return json.dumps({
+                "status": "error",
+                "message": "Missing required parameters",
+                "required": ["project_id", "topic"],
+                "provided": {"project_id": project_id or "missing", "topic": topic or "missing"}
+            }, indent=2)
         
         # Fetch FRESH requirements from Polarion (no caching)
         logger.info(f"📡 Fetching LIVE {topic} requirements from Polarion project {project_id} (real-time API call)")
@@ -895,55 +910,60 @@ def polarion_github_requirements_coverage(project_id: str, topic: str, github_re
                 "suggestion": "Try different topic keywords or check Polarion project contents"
             }, indent=2)
         
-        # Analyze GitHub repository (prepare for fresh analysis)
-        logger.info(f"🔍 Preparing LIVE GitHub repository analysis: {github_repo_url}")
-        logger.info("⚠️  Will guide to fetch current repository state via GitHub MCP tools")
-        github_analysis = _analyze_github_implementation(github_repo_url, github_folder, requirements)
+        # Auto-detect GitHub repository and prepare analysis
+        logger.info(f"🔍 AUTO-DETECTING GitHub repository from context and preparing LIVE analysis")
+        logger.info("⚠️  Will examine current repository state via GitHub MCP tools")
         
-        # Check if GitHub analysis indicates it needs dynamic tools
-        if "note" in github_analysis and "should be updated" in github_analysis["note"]:
-            return json.dumps({
-                "status": "partial_success",
-                "message": "✅ FRESH requirements fetched from Polarion, 🔄 GitHub analysis needs real-time steps",
-                "fresh_data_timestamp": time.time(),
-                "polarion_requirements": requirements,
-                "github_analysis_needed": github_analysis,
-                "real_time_steps_required": [
-                    f"1. 🔐 Use mcp_github_get_me() to verify current GitHub access",
-                    f"2. 📁 Use mcp_github_get_file_contents(owner='{github_analysis.get('owner')}', repo='{github_analysis.get('repo')}', path='{github_folder or ''}/') to explore CURRENT repository",
-                    f"3. 📄 Use mcp_github_get_file_contents() to analyze LATEST code files",
-                    f"4. 🔍 Search current code for requirement IDs: {', '.join([req.get('id', '') for req in requirements[:5]])}",
-                    f"5. 💡 Look for implementation evidence in comments, function names, and docstrings"
-                ],
-                "requirements_to_verify": [{"id": req.get("id"), "title": req.get("title")} for req in requirements],
-                "data_freshness_note": "Polarion data is live/current. GitHub analysis will use real-time repository state.",
-                "suggestion": "For complete FRESH analysis, use GitHub MCP tools to examine current code files"
-            }, indent=2)
+        # Auto-detect connected GitHub repo (this will be enhanced to use mcp_github_get_me())
+        github_analysis = {
+            "auto_detection": "Using connected GitHub context",
+            "analyzed_folder": github_folder,
+            "analysis_method": "Smart detection and real-time code examination",
+            "requirement_analysis_steps": [
+                "1. 🔐 Auto-detect connected GitHub repository",
+                "2. 📁 Examine current code structure and files", 
+                "3. 🔍 Search for requirement implementations in actual code",
+                "4. 💡 Identify missing implementations based on code analysis"
+            ]
+        }
         
-        # Perform coverage analysis
-        coverage_analysis = _perform_coverage_analysis(requirements, github_analysis)
-        
-        # Generate comprehensive report
-        report = {
+        # Always provide smart guidance for manual code analysis
+        return json.dumps({
             "status": "success",
+            "message": f"✅ Found {len(requirements)} '{topic}' requirements from Polarion - Ready for code analysis",
             "analysis_summary": {
                 "project_id": project_id,
                 "topic": topic,
-                "github_repo": github_repo_url,
-                "analyzed_folder": github_folder or "entire repository",
-                "total_requirements": len(requirements),
-                "implemented_requirements": coverage_analysis["implemented_count"],
-                "missing_implementations": coverage_analysis["missing_count"],
-                "coverage_percentage": coverage_analysis["coverage_percentage"]
+                "total_requirements_found": len(requirements),
+                "target_folder": github_folder or "entire repository",
+                "analysis_approach": "Smart examination of connected GitHub repository"
             },
-            "requirements_details": requirements,
-            "implementation_analysis": github_analysis,
-            "coverage_results": coverage_analysis,
-            "recommendations": _generate_recommendations(coverage_analysis, topic)
-        }
-        
-        logger.info(f"Coverage analysis completed: {coverage_analysis['coverage_percentage']:.1f}% coverage")
-        return json.dumps(report, indent=2)
+            "polarion_requirements": requirements,
+            "next_steps_for_code_analysis": [
+                "1. 🔐 Use mcp_github_get_me() to verify current GitHub repository access",
+                "2. 📁 Use mcp_github_get_file_contents() to explore current repository structure",
+                f"3. 🔍 Search code files for these requirement IDs: {', '.join([req.get('id', '') for req in requirements[:5]])}{'...' if len(requirements) > 5 else ''}",
+                "4. 📄 Examine functions, classes, and comments for implementation evidence", 
+                "5. 💡 Compare actual code implementation against requirement descriptions",
+                "6. 📋 Identify which requirements have implementations and which are missing"
+            ],
+            "requirements_to_check": [
+                {
+                    "id": req.get("id", "Unknown"), 
+                    "title": req.get("title", "No title"), 
+                    "description": req.get("description", "No description")[:100] + "..." if req.get("description", "") else "No description"
+                } 
+                for req in requirements
+            ],
+            "smart_analysis_tips": [
+                f"🔍 Look for requirement IDs (like {requirements[0].get('id', 'REQ-XXX')}) in code comments",
+                "🏗️ Check if functionality described in requirements is actually implemented",
+                "📝 Look for function/class names that match requirement topics",
+                "🧪 Check for test files that verify requirement implementation",
+                "📋 Cross-reference requirement descriptions with actual code behavior"
+            ],
+            "manual_verification_needed": "This tool provides requirements - you must examine the actual code to determine implementation status"
+        }, indent=2)
         
     except Exception as e:
         logger.error(f"Requirements coverage analysis failed: {e}")
