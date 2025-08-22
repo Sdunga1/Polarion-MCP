@@ -1,0 +1,520 @@
+DAVID GOMES: All right, nice to see you, everyone.
+0:03
+Thank you for joining.
+0:05
+My name is David.
+0:06
+I work at a company called Neon.
+0:08
+We're a serverless postgres provider.
+0:10
+So the people want postgres, we give them postgres.
+0:15
+And today I'm going to be talking about MCP servers.
+0:18
+In specific, I'm going to be talking about how not
+0:23
+to build MCP servers and then how to actually go
+0:29
+about it in the right way.
+0:32
+So if you're unfamiliar with MCP, it's a new protocol
+0:38
+that was developed by Anthropic, which is a way for LLMs
+0:47
+to be able to interface with real-world apps and services.
+0:51
+So essentially, it's a protocol, an open protocol,
+0:54
+that standardizes how applications provide context
+0:58
+to LLMs and how LLMs can use real-world products.
+1:03
+It's very new.
+1:06
+It's about six/seven months old.
+1:10
+But it's getting tremendous adoption.
+1:12
+So if you saw the keynote yesterday from Satya,
+1:15
+the Windows Copilot will become an MCP client soon.
+1:19
+Just today in the morning at Google Code --
+1:24
+or Google I/O, rather, they announced
+1:26
+that Gemini will support MCP as well.
+1:29
+OpenAI already supports MCP.
+1:30
+And Claude of course has supported MCP
+1:33
+from the beginning.
+1:35
+What does that mean?
+1:36
+It means that if you're building an app or a service
+1:39
+and you want LLMs to use your app, you need an MCP server.
+1:44
+So this has led to a lot of companies building MCP servers
+1:49
+in a rush in order to make their services available to LLMs
+1:54
+like Claude and OpenAI's ChatGPT.
+1:57
+So let's break it down.
+1:58
+What makes up an MCP server?
+2:01
+MCP servers have tools, resources, and prompts.
+2:06
+These are the three main concepts of an MCP server.
+2:11
+And these are the things that an MCP server exposes
+2:15
+to the underlying LLM, which is the MCP client.
+2:18
+The most important of these by far are the tools.
+2:22
+Tools, you can think of them as actions.
+2:25
+These are things that the LLM might want to perform.
+2:29
+An example would be if you're building an e-commerce website,
+2:33
+to buy an item on your website.
+2:36
+In our case, we're a postgres provider,
+2:39
+we give people postgres.
+2:41
+So an example of a tool would be to create a postgres database.
+2:46
+And this will be a repress that comes in from the LLM.
+2:50
+The resources and prompts are not as interesting,
+2:55
+so I won't spend any time on them today.
+2:59
+If the concept of an MCP server still hasn't permeated,
+3:06
+it can be like a tricky thing to really understand,
+3:10
+I have a very quick demo here of Neon's MCP server in production.
+3:17
+So I have a video here of a Cursor user asking Cursor
+3:25
+to create an application using Neon.
+3:27
+And what Cursor will do -- and I know you can't see the video.
+3:31
+But what Cursor will do is it'll interface with our MCP server
+3:36
+in order to request a postgres database.
+3:38
+And you will then use said postgres database
+3:41
+to create an application.
+3:43
+So if you look at the prompt there, it says,
+3:46
+"Build me a to-do list app, use Neon postgres, and use Neon off.
+3:51
+And what Cursor will do is it'll use our MCP server
+3:55
+to provision a postgres database with Neon off,
+3:59
+and in just a few minutes,
+4:00
+the application will be fully functional
+4:02
+and have a real database, a real physical postgres database,
+4:07
+thanks to our MCP server.
+4:10
+So MCP is awesome, I think we've established that.
+4:17
+The problem now is creating an MCP server is a lot of work.
+4:22
+Our MCP server, which is actually open source,
+4:26
+is around 500 lines of code.
+4:28
+So it's not that large, but it's still a significant amount
+4:33
+of work to put it together.
+4:35
+You have to write tests.
+4:36
+You have to think of it.
+4:37
+And so a lot of companies have decided
+4:40
+to just autogenerate their MCP server.
+4:44
+And in fact, a lot of services recently came
+4:47
+out that help you do this.
+4:48
+So how does that work?
+4:50
+Every IT guy has an open API spec, an open API schema,
+4:55
+which describes all the endpoints, the inputs
+4:58
+and outputs to all of those endpoints.
+5:01
+In theory -- well, not just in theory, quite simply,
+5:07
+one could take an open API schema
+5:11
+and just autogenerate an MCP server.
+5:15
+Siri got in the way.
+5:20
+You could just take an open API schema
+5:22
+and autogenerate an MCP server.
+5:23
+It's very easy.
+5:24
+It'll take less than a minute.
+5:26
+And then you have an MCP server.
+5:29
+Now, the problem with this is that it isn't quite right.
+5:35
+So while it is very easy, and like I said, there's a bunch
+5:39
+of services like Stainless, Speakeasy, Mintlify,
+5:42
+there's even a few more, it isn't the right thing to do.
+5:47
+Let's talk about why.
+5:51
+The first problem is that APIs tend to be very extensive.
+5:58
+In the case of Neon's API, we have around 75
+6:02
+to 100 different endpoints.
+6:04
+I'm not showing them on this slide,
+6:06
+but we have a lot of endpoints.
+6:08
+And LLMs are really, really terrible at choosing
+6:13
+from a long list of tools.
+6:15
+So if you give them too much choice,
+6:17
+they won't really know what to do.
+6:18
+They'll get very confused.
+6:20
+Even though context windows have been increasing and you hear
+6:24
+about a million tokens, five million tokens,
+6:27
+unlimited token context window, that doesn't mean
+6:31
+that an LLM performs just as well with a large context
+6:35
+than it does with a smaller context.
+6:37
+In fact, the opposite is true.
+6:39
+LLMs perform much better with a reduced context size.
+6:43
+So if you give them too many tools,
+6:45
+they won't know what to do.
+6:46
+So if you autogenerate MCP server, you're going to get all
+6:51
+of your API endpoints as MCP tools,
+6:55
+and LLMs will not perform well against your service.
+7:00
+So you have to make a choice here.
+7:03
+Then, the second problem is that API descriptions
+7:07
+in your existing API are probably not
+7:10
+that well-written for LLMs.
+7:13
+This is sometimes more true than others.
+7:16
+But for the most part in my experience,
+7:19
+API endpoints are written for humans who can Google things
+7:23
+and can reason about things.
+7:25
+But LLMs need you to be a lot more direct with them.
+7:29
+And also LLMs need examples much more than humans do.
+7:34
+So in our case for our MCP server,
+7:37
+our tool descriptions are actually written in XML,
+7:41
+and we write them in this very organized manner and we try
+7:47
+to give the LLM as much context as possible
+7:50
+about each individual tool and when to use it.
+7:54
+Which is something that you probably are not doing
+7:57
+in your APIs today.
+7:58
+So in a way, writing for an LLM is different
+8:02
+than writing for a human.
+8:04
+Which is why you want to think about how
+8:07
+to write the descriptions of all of your MCP tools for LLMs.
+8:12
+And then what you should also think
+8:14
+about doing is writing tests for this.
+8:17
+So we have "Evals," which are basically tests in the AI world.
+8:22
+We have evals to make sure
+8:24
+that LLMs are calling the right tool for the right job.
+8:29
+And we run these evals 100, 1,000, 10,000 times.
+8:33
+Because obviously, LLMs are nondeterministic.
+8:36
+And we make sure that the tools that we're exposing
+8:39
+to the LLM have good descriptions.
+8:43
+And we get it right on these descriptions
+8:45
+as our evals evolve.
+8:48
+The third problem is that most APIs
+8:51
+out there today are designed
+8:53
+for low-level resource management and automation.
+8:58
+The reason most businesses have an API are for developers to go
+9:05
+and use those APIs for automation.
+9:08
+But this is not what LLMs need from an API.
+9:12
+LLMs need tasks.
+9:14
+They need actions and tools.
+9:16
+LLMs are much more human-like in that sense.
+9:19
+And so an LLM doesn't really care
+9:21
+about like low-level resource creation.
+9:26
+It cares about achieving a specific goal.
+9:28
+And so when you design an MCP server, when you design a list
+9:33
+of tools, you need to design that with that in mind.
+9:39
+And this is not what you do with an API.
+9:42
+And that's part of the reason why Anthropic decided
+9:45
+to create MCP in the first place,
+9:46
+is because open API schemas
+9:49
+out there today are not really prepared
+9:51
+for this kind of design.
+9:55
+And then finally, if you just take your API and expose it
+9:58
+as an MCP, you're missing out on the potential
+10:01
+to create many more interesting things.
+10:05
+And I'll walk you through an example from our MCP server.
+10:09
+So one of the things that LLMs need to do
+10:12
+when they're building an app is do database migrations.
+10:15
+That's true about humans.
+10:16
+That's true about LLMs.
+10:19
+And so we have to expose this in our MCP server
+10:23
+so that LLMs using Neon
+10:25
+for postgres can do database migrations.
+10:28
+The naive approach is to expose a single tool called "Run SQL"
+10:32
+and then expect LLMs to call that tool
+10:35
+to do database migrations.
+10:38
+So if we have a tool called "Run SQL" --
+10:40
+which we actually do in our MCP server --
+10:42
+an LLM can go and use it and pass
+10:44
+through any alter table statements that it wants
+10:48
+and just do database migrations like that.
+10:52
+But it's a lot more interesting to use the opportunity
+10:57
+that you're developing an MCP server to think
+10:59
+about doing more than just the basic.
+11:04
+So when we created our MCP server,
+11:08
+we decided to expose purpose-built MCP tools
+11:11
+for database migrations.
+11:13
+So we have a "Prepare Database Migration" tool,
+11:16
+and we have a "Complete Database Migration" tool.
+11:19
+And LLMs are eager to use these tools over the "Run SQL" tool.
+11:26
+We actually encourage LLMs to use these tools
+11:28
+if they're wanting to do database migrations
+11:31
+on their Neon database.
+11:33
+And the way it works is the first tool sort
+11:37
+of stages the database migration on a temporary Neon branch.
+11:41
+And then once that's done, we actually respond back to the LLM
+11:46
+and say, "Hey, the database migration you're trying
+11:49
+to run is now staged on this branch.
+11:51
+Please go and test the migration before you commit it."
+11:56
+And then we actually teach the LLM how to commit the migration.
+12:00
+So you can see in the end, we say,
+12:03
+"Call the finish database migration to complete this job."
+12:09
+And then the LLM can call the "Complete Database Migration"
+12:11
+when it decides that it's ready to go
+12:14
+for their main database branch.
+12:18
+This kind of thing, we wouldn't really expose it in our API.
+12:22
+It doesn't really make sense to have such a complex,
+12:25
+multistep workflow in our API.
+12:29
+But it is totally the kind of thing that makes a lot of sense
+12:32
+for LLMs, especially because LLMs are not that good at SQL.
+12:37
+And so we kind of want to help them test their SQL before they
+12:42
+apply it on their main database branch.
+12:45
+So if you're building an FTP server today,
+12:48
+if you haven't built your company's MCP server yet,
+12:51
+what should you do?
+12:51
+Should you write it from scratch?
+12:53
+Or should you autogenerate it using one of the tools
+12:56
+that I mentioned before?
+12:58
+I would say definitely don't autogenerate it.
+13:01
+I really don't think that's the way to go.
+13:03
+But a hybrid solution, where you start
+13:05
+by autogenerating an MCP server and then cut it down,
+13:09
+can make a lot of sense.
+13:10
+I haven't tried it myself.
+13:12
+But in principle, you should be able
+13:15
+to autogenerate an MCP server from your open API schema
+13:18
+and then cut down as many tools as possible.
+13:22
+The worst thing you can give an LLM is too much choice.
+13:25
+So remove any tools that you don't think are essential
+13:28
+for an LLM to consume and then evaluate the descriptions
+13:32
+for all of your tools and then think about interesting tools
+13:37
+that you might want to expose to an LLM but you maybe don't want
+13:40
+to have in your API, and then write your evals.
+13:46
+That would be a whole other talk.
+13:47
+But if you're building an MCP server, you should have evals
+13:51
+and you should have tests to ensure
+13:52
+that LLMs can use your MCP server correctly.
+13:57
+That's it for me today.
+14:00
+I just want to say like, please reach out.
+14:03
+I'm an MCP nerd.
+14:05
+I'm a database nerd.
+14:06
+I'm happy to talk about remote MCP servers.
+14:10
+We've been running our MCP server in production
+14:14
+for more than a month now.
+14:17
+If you want to talk about tests or evals for MCP servers,
+14:21
+happy to nerd out about that as well.
+14:23
+Authentication for MCP, or just anything database related,
+14:28
+I'm really into databases.
+14:29
+That's it for me today.
+14:31
+Thank you all very much for your time.
+
